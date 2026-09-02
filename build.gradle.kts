@@ -3,4 +3,5 @@ plugins {
     alias(libs.plugins.androidKotlinMultiplatformLibrary) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.androidxRoom3) apply false
+    alias(libs.plugins.cryptography) apply false
 }

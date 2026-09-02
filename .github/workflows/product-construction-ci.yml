@@ -57,6 +57,76 @@ jobs:
       - name: Compile Android/JVM shared core and run common contracts on JVM
         run: gradle --no-daemon --stacktrace :shared:build :shared:jvmTest
 
+  android-keystore-device:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out clean-room Product repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '9.5.0'
+      - name: Provision Android emulator from Google SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          if [ ! -x "$AVDMANAGER" ]; then AVDMANAGER="$(command -v avdmanager)"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "system-images;android-35;google_apis;x86_64" >/dev/null
+          echo no | "$AVDMANAGER" create avd \
+            --force \
+            --name appfusion-secureblob-api35 \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device pixel_6 >/dev/null
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd appfusion-secureblob-api35 \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -no-snapshot \
+            -gpu swiftshader_indirect \
+            >"$RUNNER_TEMP/appfusion-emulator.log" 2>&1 &
+          adb wait-for-device
+          booted=0
+          for _ in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$booted" != "1" ]; then
+            cat "$RUNNER_TEMP/appfusion-emulator.log" >&2
+            exit 1
+          fi
+          adb shell input keyevent 82 || true
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+      - name: Run Android Keystore device probe
+        run: gradle --no-daemon --stacktrace :shared:connectedAndroidTest
+      - name: Stop emulator
+        if: always()
+        shell: bash
+        run: adb emu kill || true
+
   ios-contracts:
     runs-on: macos-15
     timeout-minutes: 25
@@ -74,7 +144,7 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.5.0'
-      - name: Run shared contracts through Kotlin Native iOS simulator and link framework
+      - name: Run shared contracts and Apple Keychain probe on iOS Simulator
         run: >-
           gradle --no-daemon --stacktrace
           :shared:iosSimulatorArm64Test

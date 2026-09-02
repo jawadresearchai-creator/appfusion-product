@@ -5,6 +5,11 @@ plugins {
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidxRoom3)
+    alias(libs.plugins.cryptography)
+}
+
+cryptography {
+    configureSwiftLinkerOpts = true
 }
 
 kotlin {
@@ -16,6 +21,10 @@ kotlin {
         minSdk = 26
         compilerOptions {
             jvmTarget = JvmTarget.JVM_17
+        }
+        withDeviceTest {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+            execution = "HOST"
         }
     }
 
@@ -37,10 +46,16 @@ kotlin {
             implementation(libs.androidx.room3.runtime)
             implementation(libs.androidx.sqlite.bundled)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.cryptography.core)
+            implementation(libs.cryptography.provider.optimal)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+        androidDeviceTest.dependencies {
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.junit)
         }
     }
 }
