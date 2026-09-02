@@ -1,0 +1,29 @@
+name: Product Boundary CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-room-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Product repository only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Run clean-room guard tests
+        run: python -m unittest discover -s tests -v
+      - name: Reject forbidden artifact types
+        shell: bash
+        run: |
+          if find . -path ./.git -prune -o -type f \( -iname '*.apk' -o -iname '*.apkm' -o -iname '*.xapk' -o -iname '*.dex' -o -iname '*.smali' \) -print -quit | grep -q .; then
+            echo 'Forbidden Foundry/input artifact detected in Product repository.' >&2
+            exit 1
+          fi

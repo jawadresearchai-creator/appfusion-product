@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "canonical_state": {
+    "authority": "CLOUD",
+    "repository": "jawadresearchai-creator/appfusion-product",
+    "clean_room_blueprints_drive_id": "1OZgNahbIykWZZdvVUy3u34ZrRQnT7RQB",
+    "product_releases_drive_id": "1JzDipBUULYnBK5RSUHUv4j_hNhWvzMuo"
+  },
+  "foundry_repository_access": false,
+  "local_environment": {
+    "role": "OPTIONAL_ADAPTER",
+    "required_for_build_or_release": false
+  },
+  "product_implementation_status": "WAITING_FOR_APPROVED_PRODUCT_BLUEPRINT"
+}
