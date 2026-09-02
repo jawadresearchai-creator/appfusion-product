@@ -89,6 +89,8 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "system-images;android-35;google_apis;x86_64" >/dev/null
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          test -x "$ADB"
           echo no | "$AVDMANAGER" create avd \
             --force \
             --name appfusion-secureblob-api35 \
@@ -103,10 +105,10 @@ jobs:
             -no-snapshot \
             -gpu swiftshader_indirect \
             >"$RUNNER_TEMP/appfusion-emulator.log" 2>&1 &
-          adb wait-for-device
+          "$ADB" wait-for-device
           booted=0
           for _ in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+            if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               booted=1
               break
             fi
@@ -116,16 +118,16 @@ jobs:
             cat "$RUNNER_TEMP/appfusion-emulator.log" >&2
             exit 1
           fi
-          adb shell input keyevent 82 || true
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
+          "$ADB" shell input keyevent 82 || true
+          "$ADB" shell settings put global window_animation_scale 0
+          "$ADB" shell settings put global transition_animation_scale 0
+          "$ADB" shell settings put global animator_duration_scale 0
       - name: Run Android Keystore device probe
         run: gradle --no-daemon --stacktrace :shared:connectedAndroidTest
       - name: Stop emulator
         if: always()
         shell: bash
-        run: adb emu kill || true
+        run: "$ANDROID_HOME/platform-tools/adb" emu kill || true
 
   ios-contracts:
     runs-on: macos-15
