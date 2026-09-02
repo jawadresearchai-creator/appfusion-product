@@ -127,7 +127,8 @@ jobs:
       - name: Stop emulator
         if: always()
         shell: bash
-        run: "$ANDROID_HOME/platform-tools/adb" emu kill || true
+        run: |
+          "$ANDROID_HOME/platform-tools/adb" emu kill || true
 
   ios-contracts:
     runs-on: macos-15
