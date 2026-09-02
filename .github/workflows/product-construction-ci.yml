@@ -59,7 +59,7 @@ jobs:
 
   android-keystore-device:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Check out clean-room Product repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -105,17 +105,41 @@ jobs:
             -no-snapshot \
             -gpu swiftshader_indirect \
             >"$RUNNER_TEMP/appfusion-emulator.log" 2>&1 &
-          "$ADB" wait-for-device
+          EMULATOR_PID=$!
+          device_ready=0
+          for _ in $(seq 1 90); do
+            if "$ADB" get-state 2>/dev/null | grep -qx device; then
+              device_ready=1
+              break
+            fi
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo 'Android emulator process exited before ADB became ready.' >&2
+              cat "$RUNNER_TEMP/appfusion-emulator.log" >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$device_ready" != "1" ]; then
+            echo 'Android emulator did not become ADB-ready within 180 seconds.' >&2
+            cat "$RUNNER_TEMP/appfusion-emulator.log" >&2 || true
+            exit 1
+          fi
           booted=0
           for _ in $(seq 1 120); do
             if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               booted=1
               break
             fi
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo 'Android emulator process exited before boot completed.' >&2
+              cat "$RUNNER_TEMP/appfusion-emulator.log" >&2 || true
+              exit 1
+            fi
             sleep 2
           done
           if [ "$booted" != "1" ]; then
-            cat "$RUNNER_TEMP/appfusion-emulator.log" >&2
+            echo 'Android emulator did not complete boot within 240 seconds.' >&2
+            cat "$RUNNER_TEMP/appfusion-emulator.log" >&2 || true
             exit 1
           fi
           "$ADB" shell input keyevent 82 || true
@@ -124,6 +148,12 @@ jobs:
           "$ADB" shell settings put global animator_duration_scale 0
       - name: Run Android Keystore device probe
         run: gradle --no-daemon --stacktrace :shared:connectedAndroidTest
+      - name: Emit Android failure evidence
+        if: failure()
+        shell: bash
+        run: |
+          cat "$RUNNER_TEMP/appfusion-emulator.log" || true
+          find shared/build -type f -name 'TEST-*.xml' -print -exec cat {} \; || true
       - name: Stop emulator
         if: always()
         shell: bash
@@ -152,3 +182,8 @@ jobs:
           gradle --no-daemon --stacktrace
           :shared:iosSimulatorArm64Test
           :shared:linkDebugFrameworkIosSimulatorArm64
+      - name: Emit iOS test failure evidence
+        if: failure()
+        shell: bash
+        run: |
+          find shared/build/test-results -type f -name '*.xml' -print -exec cat {} \; || true
