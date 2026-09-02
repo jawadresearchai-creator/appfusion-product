@@ -78,6 +78,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
@@ -96,6 +99,8 @@ jobs:
             --name appfusion-secureblob-api35 \
             --package "system-images;android-35;google_apis;x86_64" \
             --device pixel_6 >/dev/null
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$RUNNER_TEMP/appfusion-avds.txt"
+          grep -qx 'appfusion-secureblob-api35' "$RUNNER_TEMP/appfusion-avds.txt"
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
           nohup "$ANDROID_HOME/emulator/emulator" \
             -avd appfusion-secureblob-api35 \
@@ -147,6 +152,9 @@ jobs:
           "$ADB" shell settings put global transition_animation_scale 0
           "$ADB" shell settings put global animator_duration_scale 0
       - name: Run Android Keystore device probe
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/android-user
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
         run: gradle --no-daemon --stacktrace :shared:connectedAndroidTest
       - name: Emit Android failure evidence
         if: failure()
@@ -177,11 +185,104 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.5.0'
-      - name: Run shared contracts and Apple Keychain probe on iOS Simulator
+      - name: Run shared contracts and link iOS Simulator framework
         run: >-
           gradle --no-daemon --stacktrace
           :shared:iosSimulatorArm64Test
           :shared:linkDebugFrameworkIosSimulatorArm64
+      - name: Run Apple Keychain adapter from simulator-installed host app
+        shell: bash
+        run: |
+          set -euo pipefail
+          FRAMEWORK_DIR="$PWD/shared/build/bin/iosSimulatorArm64/debugFramework"
+          FRAMEWORK="$FRAMEWORK_DIR/AppFusionShared.framework"
+          test -d "$FRAMEWORK"
+          grep -n 'AppleKeychainHostProbe' "$FRAMEWORK/Headers/AppFusionShared.h"
+
+          APP="$RUNNER_TEMP/SecureBlobProbe.app"
+          SWIFT="$RUNNER_TEMP/SecureBlobProbe.swift"
+          mkdir -p "$APP"
+          cat >"$SWIFT" <<'SWIFT'
+          import Foundation
+          import AppFusionShared
+
+          @main
+          struct SecureBlobProbeMain {
+              static func main() {
+                  let result = AppleKeychainHostProbe().runProbe()
+                  print("APPFUSION_KEYCHAIN_PROBE=\(result)")
+              }
+          }
+          SWIFT
+          cat >"$APP/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>SecureBlobProbe</string>
+            <key>CFBundleIdentifier</key><string>com.appfusion.secureblob.probe</string>
+            <key>CFBundleName</key><string>SecureBlobProbe</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>MinimumOSVersion</key><string>16.0</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+          </dict>
+          </plist>
+          PLIST
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun --sdk iphonesimulator swiftc \
+            -sdk "$SDK" \
+            -target arm64-apple-ios16.0-simulator \
+            -F "$FRAMEWORK_DIR" \
+            -framework AppFusionShared \
+            -o "$APP/SecureBlobProbe" \
+            "$SWIFT"
+          codesign --force --sign - --timestamp=none "$APP"
+
+          RUNTIME="$(python3 - <<'PY'
+          import json, subprocess
+          payload = json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))
+          candidates = [r for r in payload['runtimes'] if r.get('isAvailable') and r['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
+          if not candidates:
+              raise SystemExit('No available iOS simulator runtime')
+          def ver(r):
+              return tuple(int(p) for p in r.get('version','0').split('.'))
+          print(max(candidates, key=ver)['identifier'])
+          PY
+          )"
+          mapfile -t DEVICE_TYPES < <(python3 - <<'PY'
+          import json, subprocess
+          payload = json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))
+          ids = [d['identifier'] for d in payload['devicetypes'] if d.get('name','').startswith('iPhone')]
+          for identifier in reversed(ids):
+              print(identifier)
+          PY
+          )
+          UDID=''
+          for DEVICE_TYPE in "${DEVICE_TYPES[@]}"; do
+            if CANDIDATE="$(xcrun simctl create AppFusionSecureBlobProbe "$DEVICE_TYPE" "$RUNTIME" 2>/dev/null)"; then
+              UDID="$CANDIDATE"
+              break
+            fi
+          done
+          test -n "$UDID"
+          cleanup_simulator() {
+            xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
+            xcrun simctl delete "$UDID" >/dev/null 2>&1 || true
+          }
+          trap cleanup_simulator EXIT
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          set +e
+          OUTPUT="$(xcrun simctl launch --console "$UDID" com.appfusion.secureblob.probe 2>&1)"
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          test "$STATUS" -eq 0
+          grep -F 'APPFUSION_KEYCHAIN_PROBE=OK' <<<"$OUTPUT"
       - name: Emit iOS test failure evidence
         if: failure()
         shell: bash
