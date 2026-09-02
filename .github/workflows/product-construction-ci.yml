@@ -1,0 +1,81 @@
+name: Product Construction CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/product-construction-ci.yml
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle.properties
+      - gradle/**
+      - shared/**
+  pull_request:
+    paths:
+      - .github/workflows/product-construction-ci.yml
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle.properties
+      - gradle/**
+      - shared/**
+  workflow_dispatch:
+
+concurrency:
+  group: product-construction-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-jvm-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out clean-room Product repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '9.5.0'
+      - name: Ensure Android SDK 36 is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+      - name: Compile Android/JVM shared core and run common contracts on JVM
+        run: gradle --no-daemon --stacktrace :shared:build :shared:jvmTest
+
+  ios-contracts:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out clean-room Product repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: '9.5.0'
+      - name: Run shared contracts through Kotlin Native iOS simulator and link framework
+        run: >-
+          gradle --no-daemon --stacktrace
+          :shared:iosSimulatorArm64Test
+          :shared:linkDebugFrameworkIosSimulatorArm64

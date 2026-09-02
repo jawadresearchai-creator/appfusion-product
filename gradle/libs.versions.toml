@@ -1,0 +1,7 @@
+[versions]
+kotlin = "2.4.10"
+androidGradlePlugin = "9.3.0"
+
+[plugins]
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "androidGradlePlugin" }
