@@ -3,8 +3,28 @@ name: Product Boundary CI
 on:
   push:
     branches: [main]
+    paths:
+      - .github/workflows/product-boundary-ci.yml
+      - blueprints/**
+      - environment-manifest.json
+      - policies/**
+      - schemas/**
+      - scripts/**
+      - tests/**
   pull_request:
+    paths:
+      - .github/workflows/product-boundary-ci.yml
+      - blueprints/**
+      - environment-manifest.json
+      - policies/**
+      - schemas/**
+      - scripts/**
+      - tests/**
   workflow_dispatch:
+
+concurrency:
+  group: product-boundary-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

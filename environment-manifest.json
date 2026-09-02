@@ -11,5 +11,6 @@
     "role": "OPTIONAL_ADAPTER",
     "required_for_build_or_release": false
   },
+  "github_usage_policy": "ESSENTIAL_ONLY",
   "product_implementation_status": "WAITING_FOR_APPROVED_PRODUCT_BLUEPRINT"
 }
