@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import unittest
@@ -22,6 +23,9 @@ class CleanRoomGuardTests(unittest.TestCase):
             "acceptance": {},
         }
 
+    def policy_hash(self):
+        return hashlib.sha256((ROOT / "policies/product-boundary.json").read_bytes()).hexdigest()
+
     def attestation(self, blueprint):
         return {
             "schema_version": "1.0.0",
@@ -29,13 +33,23 @@ class CleanRoomGuardTests(unittest.TestCase):
             "product_blueprint_sha256": canonical_hash(blueprint),
             "approval_status": "APPROVED",
             "approved_at": "2026-09-02T00:00:00Z",
-            "policy_bundle_hash": "a" * 64,
+            "policy_bundle_hash": self.policy_hash(),
             "clean_room_schema_version": "1.0.0",
         }
 
     def test_valid_transfer_passes(self):
         blueprint = self.valid_blueprint()
         self.assertEqual(verify(blueprint, self.attestation(blueprint)), [])
+
+    def test_exact_artifact_hash_override_passes(self):
+        blueprint = self.valid_blueprint()
+        attestation = self.attestation(blueprint)
+        exact_hash = "1" * 64
+        attestation["product_blueprint_sha256"] = exact_hash
+        self.assertEqual(
+            verify(blueprint, attestation, blueprint_artifact_sha256=exact_hash),
+            [],
+        )
 
     def test_source_aware_key_is_rejected(self):
         blueprint = self.valid_blueprint()
@@ -48,6 +62,12 @@ class CleanRoomGuardTests(unittest.TestCase):
         attestation = self.attestation(blueprint)
         attestation["product_blueprint_sha256"] = "0" * 64
         self.assertTrue(any("hash" in error.lower() for error in verify(blueprint, attestation)))
+
+    def test_policy_hash_mismatch_is_rejected(self):
+        blueprint = self.valid_blueprint()
+        attestation = self.attestation(blueprint)
+        attestation["policy_bundle_hash"] = "0" * 64
+        self.assertTrue(any("policy" in error.lower() for error in verify(blueprint, attestation)))
 
 
 if __name__ == "__main__":

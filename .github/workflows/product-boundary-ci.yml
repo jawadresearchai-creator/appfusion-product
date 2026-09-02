@@ -40,6 +40,24 @@ jobs:
           persist-credentials: false
       - name: Run clean-room guard tests
         run: python -m unittest discover -s tests -v
+      - name: Verify approved blueprint transfers
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          blueprints=(blueprints/approved/PRODUCT_BLUEPRINT__*.json)
+          attestations=(blueprints/approved/PRODUCT_APPROVAL_ATTESTATION__*.json)
+          if (( ${#blueprints[@]} != ${#attestations[@]} )); then
+            echo 'Approved blueprint/attestation count mismatch.' >&2
+            exit 1
+          fi
+          for blueprint in "${blueprints[@]}"; do
+            base=$(basename "$blueprint")
+            suffix=${base#PRODUCT_BLUEPRINT__}
+            attestation="blueprints/approved/PRODUCT_APPROVAL_ATTESTATION__${suffix}"
+            test -f "$attestation"
+            python scripts/verify_transfer.py "$blueprint" "$attestation"
+          done
       - name: Reject forbidden artifact types
         shell: bash
         run: |

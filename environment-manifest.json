@@ -12,5 +12,10 @@
     "required_for_build_or_release": false
   },
   "github_usage_policy": "ESSENTIAL_ONLY",
-  "product_implementation_status": "WAITING_FOR_APPROVED_PRODUCT_BLUEPRINT"
+  "product_implementation_status": "PRODUCT_CONSTRUCTION",
+  "approved_product_blueprint": {
+    "sha256": "2120f5989ec35562377bd42e032018bd0004916d5ea4c56005f8e7048414b6fc",
+    "path": "blueprints/approved/PRODUCT_BLUEPRINT__personal-vault-cadence-workspace_v1.json",
+    "approval_attestation_path": "blueprints/approved/PRODUCT_APPROVAL_ATTESTATION__personal-vault-cadence-workspace_v1.json"
+  }
 }
