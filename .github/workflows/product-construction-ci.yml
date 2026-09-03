@@ -201,6 +201,7 @@ jobs:
 
           APP="$RUNNER_TEMP/SecureBlobProbe.app"
           SWIFT="$RUNNER_TEMP/SecureBlobProbe.swift"
+          ENTITLEMENTS="$RUNNER_TEMP/SecureBlobProbe.entitlements"
           mkdir -p "$APP/Frameworks"
           cat >"$SWIFT" <<'SWIFT'
           import Foundation
@@ -231,6 +232,22 @@ jobs:
           </dict>
           </plist>
           PLIST
+          cat >"$ENTITLEMENTS" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>application-identifier</key>
+            <string>APPFUSION0.com.appfusion.secureblob.probe</string>
+            <key>com.apple.developer.team-identifier</key>
+            <string>APPFUSION0</string>
+            <key>keychain-access-groups</key>
+            <array>
+              <string>APPFUSION0.com.appfusion.secureblob.probe</string>
+            </array>
+          </dict>
+          </plist>
+          PLIST
           SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
           xcrun --sdk iphonesimulator swiftc \
             -parse-as-library \
@@ -244,7 +261,8 @@ jobs:
             "$SWIFT"
           cp -R "$FRAMEWORK" "$APP/Frameworks/AppFusionShared.framework"
           codesign --force --sign - --timestamp=none "$APP/Frameworks/AppFusionShared.framework"
-          codesign --force --sign - --timestamp=none "$APP"
+          codesign --force --sign - --timestamp=none --entitlements "$ENTITLEMENTS" "$APP"
+          codesign --display --entitlements :- "$APP"
 
           RUNTIME="$(python3 - <<'PY'
           import json, subprocess
