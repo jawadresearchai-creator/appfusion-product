@@ -7,4 +7,5 @@
     <item name="search_documents" type="id" />
     <item name="status_text" type="id" />
     <item name="search_results" type="id" />
+    <item name="search_result_item" type="id" />
 </resources>

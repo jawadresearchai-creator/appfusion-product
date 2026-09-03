@@ -4,8 +4,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Build
 import android.text.InputType
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -27,6 +29,8 @@ class MainActivity : Activity() {
     private lateinit var titleInput: EditText
     private lateinit var bodyInput: EditText
     private lateinit var searchInput: EditText
+    private lateinit var saveButton: Button
+    private lateinit var searchButton: Button
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
 
@@ -37,6 +41,8 @@ class MainActivity : Activity() {
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { runtime.start() } }
                 .onSuccess { report ->
+                    saveButton.isEnabled = true
+                    searchButton.isEnabled = true
                     status.text = if (report.isClean) {
                         "Secure workspace ready · ${report.verifiedActiveDocuments} verified document(s)"
                     } else {
@@ -80,17 +86,21 @@ class MainActivity : Activity() {
         }
         page.addView(titleInput)
         page.addView(bodyInput)
-        page.addView(primaryButton("Encrypt & save").apply {
+        saveButton = primaryButton("Encrypt & save").apply {
             id = R.id.save_document
+            isEnabled = false
             setOnClickListener { saveDocument() }
-        })
+        }
+        page.addView(saveButton)
         page.addView(sectionTitle("Find your work").apply { setPadding(0, dp(26), 0, dp(8)) })
         searchInput = input("Search documents", singleLine = true).apply { id = R.id.search_query }
         page.addView(searchInput)
-        page.addView(primaryButton("Search").apply {
+        searchButton = primaryButton("Search").apply {
             id = R.id.search_documents
+            isEnabled = false
             setOnClickListener { searchDocuments() }
-        })
+        }
+        page.addView(searchButton)
         status = TextView(this).apply {
             id = R.id.status_text
             textSize = 14f
@@ -102,7 +112,23 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
         page.addView(results)
-        return ScrollView(this).apply { addView(page) }
+        return ScrollView(this).apply {
+            addView(page)
+            setOnApplyWindowInsetsListener { _, insets ->
+                val top: Int
+                val bottom: Int
+                if (Build.VERSION.SDK_INT >= 30) {
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    top = bars.top
+                    bottom = bars.bottom
+                } else {
+                    top = insets.systemWindowInsetTop
+                    bottom = insets.systemWindowInsetBottom
+                }
+                page.setPadding(dp(22), dp(30) + top, dp(22), dp(30) + bottom)
+                insets
+            }
+        }
     }
 
     private fun saveDocument() {
@@ -144,6 +170,7 @@ class MainActivity : Activity() {
         status.text = if (items.isEmpty()) "No matching documents." else "${items.size} result(s)"
         items.forEach { item ->
             results.addView(Button(this).apply {
+                id = R.id.search_result_item
                 text = "${item.title}\n${item.label}"
                 isAllCaps = false
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START
