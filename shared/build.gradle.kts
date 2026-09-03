@@ -28,15 +28,20 @@ kotlin {
         }
     }
 
-    val iosTargets = listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    )
-    iosTargets.forEach { target ->
-        target.binaries.framework {
-            baseName = "AppFusionShared"
-            isStatic = true
-        }
+    val iosDevice = iosArm64()
+    val iosSimulator = iosSimulatorArm64()
+
+    iosDevice.binaries.framework {
+        baseName = "AppFusionShared"
+        isStatic = true
+    }
+    iosSimulator.binaries.framework {
+        baseName = "AppFusionShared"
+        // The runtime probe embeds this framework in a simulator-installed host app.
+        // Keep the device artifact static; use a dynamic simulator framework so the
+        // Kotlin/Native linker, rather than a raw Swift static-link step, owns all
+        // native transitive dependencies needed by the probe.
+        isStatic = false
     }
 
     jvmToolchain(17)
