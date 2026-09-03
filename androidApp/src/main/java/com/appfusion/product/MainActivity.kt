@@ -144,6 +144,7 @@ class MainActivity : Activity() {
         status.text = if (items.isEmpty()) "No matching documents." else "${items.size} result(s)"
         items.forEach { item ->
             results.addView(Button(this).apply {
+                id = R.id.search_result_item
                 text = "${item.title}\n${item.label}"
                 isAllCaps = false
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START

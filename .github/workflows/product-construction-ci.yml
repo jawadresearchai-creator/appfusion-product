@@ -74,7 +74,7 @@ jobs:
                 shared/*)
                   android_jvm=true; android_device=true; ios=true ;;
                 androidApp/*)
-                  android_jvm=true ;;
+                  android_jvm=true; android_device=true ;;
                 iosApp/*|iosProbe/*)
                   ios=true ;;
               esac
@@ -149,8 +149,11 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.5.0'
-      - name: Build Android device-test APK before starting the emulator
-        run: gradle --no-daemon --stacktrace :shared:packageAndroidDeviceTest
+      - name: Build Android device-test and application APKs before starting the emulator
+        run: >-
+          gradle --no-daemon --stacktrace
+          :shared:packageAndroidDeviceTest
+          :androidApp:assembleDebug
       - name: Provision Android emulator from Google SDK packages
         shell: bash
         run: |
@@ -249,12 +252,26 @@ jobs:
           ANDROID_USER_HOME: ${{ runner.temp }}/android-user
           ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
         run: gradle --no-daemon --stacktrace :shared:connectedAndroidTest
+      - name: Run installed Android Journey J1
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/android-user
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
+          APPFUSION_J1_EVIDENCE_DIR: ${{ runner.temp }}/appfusion-j1-evidence
+        run: bash scripts/android-j1-ui-smoke.sh
+      - name: Upload Android Journey J1 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AppFusion-Android-J1-${{ github.sha }}
+          if-no-files-found: error
+          path: ${{ runner.temp }}/appfusion-j1-evidence
       - name: Emit Android failure evidence
         if: failure()
         shell: bash
         run: |
           cat "$RUNNER_TEMP/appfusion-emulator.log" || true
           find shared/build -type f -name 'TEST-*.xml' -print -exec cat {} \; || true
+          cat "$RUNNER_TEMP/appfusion-j1-evidence/logcat.txt" || true
       - name: Stop emulator
         if: always()
         shell: bash
