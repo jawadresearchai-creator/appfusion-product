@@ -4,8 +4,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Build
 import android.text.InputType
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -110,7 +112,23 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
         page.addView(results)
-        return ScrollView(this).apply { addView(page) }
+        return ScrollView(this).apply {
+            addView(page)
+            setOnApplyWindowInsetsListener { _, insets ->
+                val top: Int
+                val bottom: Int
+                if (Build.VERSION.SDK_INT >= 30) {
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    top = bars.top
+                    bottom = bars.bottom
+                } else {
+                    top = insets.systemWindowInsetTop
+                    bottom = insets.systemWindowInsetBottom
+                }
+                page.setPadding(dp(22), dp(30) + top, dp(22), dp(30) + bottom)
+                insets
+            }
+        }
     }
 
     private fun saveDocument() {
