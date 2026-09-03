@@ -19,6 +19,11 @@ data class DocumentRecordEntity(
     @PrimaryKey val id: String,
     val title: String,
     val label: String = "",
+    val blobId: String = "",
+    val contentType: String = "application/octet-stream",
+    val revision: Long = 0L,
+    val lifecycle: String = "ACTIVE",
+    val updatedAtEpochMillis: Long = 0L,
 )
 
 @Dao
@@ -28,11 +33,17 @@ interface DocumentRecordDao {
 
     @Query("SELECT * FROM document_records WHERE id = :id LIMIT 1")
     suspend fun find(id: String): DocumentRecordEntity?
+
+    @Query("SELECT * FROM document_records WHERE lifecycle = 'ACTIVE' ORDER BY id")
+    suspend fun listActive(): List<DocumentRecordEntity>
+
+    @Query("DELETE FROM document_records WHERE id = :id")
+    suspend fun delete(id: String): Int
 }
 
 @Database(
     entities = [DocumentRecordEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @ConstructedBy(DocumentDomainDatabaseConstructor::class)
@@ -82,6 +93,16 @@ val DocumentMigration1To2 = Migration(1, 2) { connection ->
     )
 }
 
+val DocumentMigration2To3 = Migration(2, 3) { connection ->
+    connection.execSQL("ALTER TABLE document_records ADD COLUMN blobId TEXT NOT NULL DEFAULT ''")
+    connection.execSQL(
+        "ALTER TABLE document_records ADD COLUMN contentType TEXT NOT NULL DEFAULT 'application/octet-stream'",
+    )
+    connection.execSQL("ALTER TABLE document_records ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
+    connection.execSQL("ALTER TABLE document_records ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'ACTIVE'")
+    connection.execSQL("ALTER TABLE document_records ADD COLUMN updatedAtEpochMillis INTEGER NOT NULL DEFAULT 0")
+}
+
 val FailingDocumentMigration1To2 = Migration(1, 2) { connection ->
     connection.execSQL(
         "ALTER TABLE document_records ADD COLUMN label TEXT NOT NULL DEFAULT ''",
@@ -89,12 +110,17 @@ val FailingDocumentMigration1To2 = Migration(1, 2) { connection ->
     error("intentional persistence-probe migration failure")
 }
 
+val FailingDocumentMigration2To3 = Migration(2, 3) { connection ->
+    connection.execSQL("ALTER TABLE document_records ADD COLUMN blobId TEXT NOT NULL DEFAULT ''")
+    error("intentional document-vault migration failure")
+}
+
 fun buildDocumentDatabase(
     builder: RoomDatabase.Builder<DocumentDomainDatabase>,
-    migration: Migration = DocumentMigration1To2,
+    migrations: List<Migration> = listOf(DocumentMigration1To2, DocumentMigration2To3),
 ): DocumentDomainDatabase = builder
     .setDriver(BundledSQLiteDriver())
-    .addMigrations(migration)
+    .addMigrations(*migrations.toTypedArray())
     .build()
 
 fun buildActivityDatabase(

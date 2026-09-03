@@ -24,10 +24,20 @@ class PersistenceIosTest {
     }
 
     @Test
-    fun versionOneDocumentStoreMigratesToVersionTwo() = runTest {
+    fun versionOneDocumentStoreMigratesToCurrentVersion() = runTest {
         val path = databasePath("migration")
         seedLegacyDocumentV1(path)
         assertSuccessfulMigration(path)
+    }
+
+    @Test
+    fun documentVaultLifecycleComposesRoomAndSecureBlob() = runTest {
+        val database = buildDocumentDatabase(documentDatabaseBuilder(databasePath("vault")))
+        try {
+            assertDocumentVaultLifecycle(database)
+        } finally {
+            database.close()
+        }
     }
 
     @Test
@@ -35,5 +45,12 @@ class PersistenceIosTest {
         val path = databasePath("rollback")
         seedLegacyDocumentV1(path)
         assertFailingMigrationRollsBack(path)
+    }
+
+    @Test
+    fun failingVaultMigrationRollsBackAtomically() = runTest {
+        val path = databasePath("vault-rollback")
+        seedLegacyDocumentV2(path)
+        assertFailingVaultMigrationRollsBack(path)
     }
 }

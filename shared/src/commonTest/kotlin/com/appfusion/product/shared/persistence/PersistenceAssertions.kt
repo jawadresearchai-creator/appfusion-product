@@ -49,12 +49,32 @@ fun seedLegacyDocumentV1(path: String) {
     }
 }
 
+fun seedLegacyDocumentV2(path: String) {
+    val connection = BundledSQLiteDriver().open(path)
+    try {
+        connection.execSQL(
+            "CREATE TABLE document_records (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, label TEXT NOT NULL DEFAULT '')",
+        )
+        connection.execSQL(
+            "INSERT INTO document_records(id, title, label) VALUES ('legacy-document', 'Legacy title', 'legacy')",
+        )
+        connection.execSQL("PRAGMA user_version = 2")
+    } finally {
+        connection.close()
+    }
+}
+
 suspend fun assertSuccessfulMigration(path: String) {
     val database = buildDocumentDatabase(documentDatabaseBuilder(path))
     try {
         val migrated = assertNotNull(database.records().find("legacy-document"))
         assertEquals("Legacy title", migrated.title)
         assertEquals("", migrated.label)
+        assertEquals("", migrated.blobId)
+        assertEquals("application/octet-stream", migrated.contentType)
+        assertEquals(0L, migrated.revision)
+        assertEquals("ACTIVE", migrated.lifecycle)
+        assertEquals(0L, migrated.updatedAtEpochMillis)
     } finally {
         database.close()
     }
@@ -63,7 +83,7 @@ suspend fun assertSuccessfulMigration(path: String) {
 suspend fun assertFailingMigrationRollsBack(path: String) {
     val database = buildDocumentDatabase(
         documentDatabaseBuilder(path),
-        FailingDocumentMigration1To2,
+        listOf(FailingDocumentMigration1To2, DocumentMigration2To3),
     )
     var failed = false
     try {
@@ -75,6 +95,23 @@ suspend fun assertFailingMigrationRollsBack(path: String) {
     }
     assertTrue(failed, "The deliberately failing migration must fail database opening")
     assertLegacyV1Intact(path)
+}
+
+suspend fun assertFailingVaultMigrationRollsBack(path: String) {
+    val database = buildDocumentDatabase(
+        documentDatabaseBuilder(path),
+        listOf(DocumentMigration1To2, FailingDocumentMigration2To3),
+    )
+    var failed = false
+    try {
+        database.records().find("legacy-document")
+    } catch (_: Throwable) {
+        failed = true
+    } finally {
+        database.close()
+    }
+    assertTrue(failed, "The deliberately failing vault migration must fail database opening")
+    assertLegacyV2Intact(path)
 }
 
 private fun assertLegacyV1Intact(path: String) {
@@ -109,6 +146,42 @@ private fun assertLegacyV1Intact(path: String) {
 
         val rows = connection.prepare(
             "SELECT COUNT(*) FROM document_records WHERE id = 'legacy-document' AND title = 'Legacy title'",
+        )
+        try {
+            assertTrue(rows.step())
+            assertEquals(1L, rows.getLong(0))
+        } finally {
+            rows.close()
+        }
+    } finally {
+        connection.close()
+    }
+}
+
+private fun assertLegacyV2Intact(path: String) {
+    val connection = BundledSQLiteDriver().open(path)
+    try {
+        val userVersion = connection.prepare("PRAGMA user_version")
+        try {
+            assertTrue(userVersion.step())
+            assertEquals(2L, userVersion.getLong(0))
+        } finally {
+            userVersion.close()
+        }
+
+        val columns = connection.prepare("PRAGMA table_info(document_records)")
+        var sawBlobId = false
+        try {
+            while (columns.step()) {
+                if (columns.getText(1) == "blobId") sawBlobId = true
+            }
+        } finally {
+            columns.close()
+        }
+        assertFalse(sawBlobId, "Failed vault migration must not leave the added column behind")
+
+        val rows = connection.prepare(
+            "SELECT COUNT(*) FROM document_records WHERE id = 'legacy-document' AND label = 'legacy'",
         )
         try {
             assertTrue(rows.step())
