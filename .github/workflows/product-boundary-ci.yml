@@ -7,10 +7,13 @@ on:
       - .github/workflows/product-boundary-ci.yml
       - .github/workflows/product-construction-ci.yml
       - blueprints/**
+      - androidApp/**
       - build.gradle.kts
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - iosApp/**
+      - iosProbe/**
       - shared/**
       - environment-manifest.json
       - policies/**
@@ -22,10 +25,13 @@ on:
       - .github/workflows/product-boundary-ci.yml
       - .github/workflows/product-construction-ci.yml
       - blueprints/**
+      - androidApp/**
       - build.gradle.kts
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - iosApp/**
+      - iosProbe/**
       - shared/**
       - environment-manifest.json
       - policies/**

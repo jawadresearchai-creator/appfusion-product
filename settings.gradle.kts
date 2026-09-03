@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "appfusion-product"
 include(":shared")
+include(":androidApp")

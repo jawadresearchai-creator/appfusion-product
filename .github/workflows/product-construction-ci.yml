@@ -9,6 +9,8 @@ on:
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - androidApp/**
+      - iosApp/**
       - iosProbe/**
       - shared/**
   pull_request:
@@ -18,6 +20,8 @@ on:
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - androidApp/**
+      - iosApp/**
       - iosProbe/**
       - shared/**
   workflow_dispatch:
@@ -30,7 +34,59 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android_jvm: ${{ steps.changes.outputs.android_jvm }}
+      android_device: ${{ steps.changes.outputs.android_device }}
+      ios: ${{ steps.changes.outputs.ios }}
+    steps:
+      - name: Check out change history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify the minimum required platform gates
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          android_jvm=false
+          android_device=false
+          ios=false
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            android_jvm=true
+            android_device=true
+            ios=true
+          else
+            base="$EVENT_BEFORE"
+            if [ "$EVENT_NAME" = 'pull_request' ]; then base="$PR_BASE_SHA"; fi
+            if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then base="HEAD^"; fi
+            while IFS= read -r path; do
+              case "$path" in
+                .github/workflows/product-construction-ci.yml|build.gradle.kts|settings.gradle.kts|gradle.properties|gradle/*)
+                  android_jvm=true; android_device=true; ios=true ;;
+                shared/*)
+                  android_jvm=true; android_device=true; ios=true ;;
+                androidApp/*)
+                  android_jvm=true ;;
+                iosApp/*|iosProbe/*)
+                  ios=true ;;
+              esac
+            done < <(git diff --name-only "$base" "$GITHUB_SHA")
+          fi
+          echo "android_jvm=$android_jvm" >> "$GITHUB_OUTPUT"
+          echo "android_device=$android_device" >> "$GITHUB_OUTPUT"
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+
   android-jvm-contracts:
+    needs: preflight
+    if: needs.preflight.outputs.android_jvm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -56,10 +112,27 @@ jobs:
             SDKMANAGER="$(command -v sdkmanager)"
           fi
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" >/dev/null
-      - name: Compile Android/JVM shared core and run common contracts on JVM
-        run: gradle --no-daemon --stacktrace :shared:build :shared:jvmTest
+      - name: Compile shared contracts and Android installable artifacts
+        run: >-
+          gradle --no-daemon --stacktrace
+          :shared:build
+          :shared:jvmTest
+          :androidApp:assembleDebug
+          :androidApp:assembleRelease
+          :androidApp:bundleRelease
+      - name: Upload Android application artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AppFusion-Android-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            androidApp/build/outputs/apk/debug/*.apk
+            androidApp/build/outputs/apk/release/*.apk
+            androidApp/build/outputs/bundle/release/*.aab
 
   android-keystore-device:
+    needs: preflight
+    if: needs.preflight.outputs.android_device == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -189,6 +262,8 @@ jobs:
           "$ANDROID_HOME/platform-tools/adb" emu kill || true
 
   ios-contracts:
+    needs: preflight
+    if: needs.preflight.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 25
     steps:
@@ -296,3 +371,31 @@ jobs:
         shell: bash
         run: |
           find shared/build/test-results -type f -name '*.xml' -print -exec cat {} \; || true
+      - name: Build the iOS simulator application shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_BUILD_DIR="$RUNNER_TEMP/appfusion-ios-app-build"
+          xcodebuild \
+            -project iosApp/AppFusion.xcodeproj \
+            -target AppFusion \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            CONFIGURATION_BUILD_DIR="$APP_BUILD_DIR" \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES \
+            ONLY_ACTIVE_ARCH=YES \
+            clean build
+          test -d "$APP_BUILD_DIR/AppFusion.app"
+          codesign --verify --deep --strict "$APP_BUILD_DIR/AppFusion.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP_BUILD_DIR/AppFusion.app" \
+            "$RUNNER_TEMP/AppFusion-ios-simulator.zip"
+      - name: Upload iOS simulator application
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AppFusion-iOS-Simulator-${{ github.sha }}
+          if-no-files-found: error
+          path: ${{ runner.temp }}/AppFusion-ios-simulator.zip
