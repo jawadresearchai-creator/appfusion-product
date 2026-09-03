@@ -9,6 +9,7 @@ on:
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - iosProbe/**
       - shared/**
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - settings.gradle.kts
       - gradle.properties
       - gradle/**
+      - iosProbe/**
       - shared/**
   workflow_dispatch:
 
@@ -74,6 +76,8 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '9.5.0'
+      - name: Build Android device-test APK before starting the emulator
+        run: gradle --no-daemon --stacktrace :shared:packageAndroidDeviceTest
       - name: Provision Android emulator from Google SDK packages
         shell: bash
         run: |
@@ -108,6 +112,9 @@ jobs:
             -no-audio \
             -no-boot-anim \
             -no-snapshot \
+            -cores 2 \
+            -memory 1536 \
+            -skin 480x800 \
             -gpu swiftshader_indirect \
             >"$RUNNER_TEMP/appfusion-emulator.log" 2>&1 &
           EMULATOR_PID=$!
@@ -151,6 +158,19 @@ jobs:
           "$ADB" shell settings put global window_animation_scale 0
           "$ADB" shell settings put global transition_animation_scale 0
           "$ADB" shell settings put global animator_duration_scale 0
+          responsive=0
+          for _ in $(seq 1 30); do
+            if "$ADB" shell getprop ro.build.version.sdk 2>/dev/null | grep -Eq '^[0-9]+$' && \
+               "$ADB" shell cmd package list packages >/dev/null 2>&1; then
+              responsive=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$responsive" != "1" ]; then
+            echo 'Android emulator was booted but not stably responsive to ADB.' >&2
+            exit 1
+          fi
       - name: Run Android Keystore device probe
         env:
           ANDROID_USER_HOME: ${{ runner.temp }}/android-user
@@ -199,73 +219,22 @@ jobs:
           test -d "$FRAMEWORK"
           grep -n 'AppleKeychainHostProbe' "$FRAMEWORK/Headers/AppFusionShared.h"
 
-          APP="$RUNNER_TEMP/SecureBlobProbe.app"
-          SWIFT="$RUNNER_TEMP/SecureBlobProbe.swift"
-          ENTITLEMENTS="$RUNNER_TEMP/SecureBlobProbe.entitlements"
-          mkdir -p "$APP/Frameworks"
-          cat >"$SWIFT" <<'SWIFT'
-          import Foundation
-          import AppFusionShared
-
-          @main
-          struct SecureBlobProbeMain {
-              static func main() {
-                  let result = AppleKeychainHostProbe().runProbe()
-                  print("APPFUSION_KEYCHAIN_PROBE=\(result)")
-              }
-          }
-          SWIFT
-          cat >"$APP/Info.plist" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key><string>SecureBlobProbe</string>
-            <key>CFBundleIdentifier</key><string>com.appfusion.secureblob.probe</string>
-            <key>CFBundleName</key><string>SecureBlobProbe</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>1.0</string>
-            <key>CFBundleVersion</key><string>1</string>
-            <key>MinimumOSVersion</key><string>16.0</string>
-            <key>LSRequiresIPhoneOS</key><true/>
-            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
-          </dict>
-          </plist>
-          PLIST
-          cat >"$ENTITLEMENTS" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>application-identifier</key>
-            <string>APPFUSION0.com.appfusion.secureblob.probe</string>
-            <key>com.apple.developer.team-identifier</key>
-            <string>APPFUSION0</string>
-            <key>keychain-access-groups</key>
-            <array>
-              <string>APPFUSION0.com.appfusion.secureblob.probe</string>
-            </array>
-          </dict>
-          </plist>
-          PLIST
-          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-          xcrun --sdk iphonesimulator swiftc \
-            -parse-as-library \
-            -sdk "$SDK" \
-            -target arm64-apple-ios16.0-simulator \
-            -F "$FRAMEWORK_DIR" \
-            -framework AppFusionShared \
-            -Xlinker -rpath \
-            -Xlinker @executable_path/Frameworks \
-            -o "$APP/SecureBlobProbe" \
-            "$SWIFT"
-          cp -R "$FRAMEWORK" "$APP/Frameworks/AppFusionShared.framework"
-          codesign --force --sign - --timestamp=none "$APP/Frameworks/AppFusionShared.framework"
-          # iOS 15+ validates the DER entitlement slot when an app carries
-          # application-identifier/keychain entitlements.  This probe is built
-          # outside Xcode, so ask codesign to generate that slot explicitly.
-          codesign --force --sign - --timestamp=none --generate-entitlement-der \
-            --entitlements "$ENTITLEMENTS" "$APP"
+          XCODE_BUILD_DIR="$RUNNER_TEMP/secureblob-probe-build"
+          xcodebuild \
+            -project iosProbe/SecureBlobProbe.xcodeproj \
+            -target SecureBlobProbe \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            CONFIGURATION_BUILD_DIR="$XCODE_BUILD_DIR" \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES \
+            ONLY_ACTIVE_ARCH=YES \
+            clean build
+          APP="$XCODE_BUILD_DIR/SecureBlobProbe.app"
+          test -d "$APP"
+          codesign --verify --deep --strict "$APP"
           codesign --display --entitlements :- "$APP"
 
           RUNTIME="$(python3 - <<'PY'
@@ -303,13 +272,25 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
-          set +e
-          OUTPUT="$(xcrun simctl launch --console "$UDID" com.appfusion.secureblob.probe 2>&1)"
-          STATUS=$?
-          set -e
-          printf '%s\n' "$OUTPUT"
-          test "$STATUS" -eq 0
-          grep -F 'APPFUSION_KEYCHAIN_PROBE=OK' <<<"$OUTPUT"
+          DATA_CONTAINER="$(xcrun simctl get_app_container "$UDID" com.appfusion.secureblob.probe data)"
+          RESULT_FILE="$DATA_CONTAINER/Documents/secureblob-probe-result.txt"
+          xcrun simctl launch "$UDID" com.appfusion.secureblob.probe
+          probe_ok=0
+          for _ in $(seq 1 90); do
+            if [ -f "$RESULT_FILE" ] && grep -Fqx 'APPFUSION_KEYCHAIN_PROBE=OK' "$RESULT_FILE"; then
+              probe_ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -f "$RESULT_FILE" ]; then cat "$RESULT_FILE"; fi
+          if [ "$probe_ok" != "1" ]; then
+            xcrun simctl spawn "$UDID" log show \
+              --last 5m \
+              --style compact \
+              --predicate 'process == "SecureBlobProbe" OR process == "securityd"' || true
+            exit 1
+          fi
       - name: Emit iOS test failure evidence
         if: failure()
         shell: bash
