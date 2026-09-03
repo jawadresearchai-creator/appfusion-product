@@ -13,6 +13,7 @@ on:
       - iosApp/**
       - iosProbe/**
       - shared/**
+      - scripts/android_j1_ui_smoke.py
   pull_request:
     paths:
       - .github/workflows/product-construction-ci.yml
@@ -24,6 +25,7 @@ on:
       - iosApp/**
       - iosProbe/**
       - shared/**
+      - scripts/android_j1_ui_smoke.py
   workflow_dispatch:
 
 concurrency:
@@ -75,6 +77,8 @@ jobs:
                   android_jvm=true; android_device=true; ios=true ;;
                 androidApp/*)
                   android_jvm=true; android_device=true ;;
+                scripts/android_j1_ui_smoke.py)
+                  android_device=true ;;
                 iosApp/*|iosProbe/*)
                   ios=true ;;
               esac
@@ -234,6 +238,7 @@ jobs:
           "$ADB" shell settings put global window_animation_scale 0
           "$ADB" shell settings put global transition_animation_scale 0
           "$ADB" shell settings put global animator_duration_scale 0
+          "$ADB" shell wm density 160
           responsive=0
           for _ in $(seq 1 30); do
             if "$ADB" shell getprop ro.build.version.sdk 2>/dev/null | grep -Eq '^[0-9]+$' && \
@@ -257,7 +262,7 @@ jobs:
           ANDROID_USER_HOME: ${{ runner.temp }}/android-user
           ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
           APPFUSION_J1_EVIDENCE_DIR: ${{ runner.temp }}/appfusion-j1-evidence
-        run: bash scripts/android-j1-ui-smoke.sh
+        run: python3 scripts/android_j1_ui_smoke.py
       - name: Upload Android Journey J1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
