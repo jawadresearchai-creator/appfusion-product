@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -130,10 +132,17 @@ def main() -> None:
     args = parser.parse_args()
     journey = AndroidJourney(args.adb, args.apk, args.evidence_dir)
     result = {"journey": "J1_ANDROID_UI", "status": "FAIL", "title": TITLE,
+              "tested_at": datetime.now(timezone.utc).isoformat(),
+              "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "apk_sha256": hashlib.sha256(args.apk.read_bytes()).hexdigest(),
+              "device_fingerprint": journey.command("shell", "getprop", "ro.build.fingerprint").strip(),
               "operations": ["create", "force-stop", "relaunch", "search", "decrypt", "reopen"]}
     try:
         journey.run()
         result["status"] = "PASS"
+        result["screenshot_sha256"] = hashlib.sha256(
+            (journey.evidence / "j1-opened-document.png").read_bytes(),
+        ).hexdigest()
         print("APPFUSION_ANDROID_J1=PASS")
     except Exception as error:
         result["error"] = str(error)
