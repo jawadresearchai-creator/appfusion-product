@@ -257,21 +257,21 @@ jobs:
           print(max(candidates, key=ver)['identifier'])
           PY
           )"
-          mapfile -t DEVICE_TYPES < <(python3 - <<'PY'
+          DEVICE_TYPES="$(python3 - <<'PY'
           import json, subprocess
           payload = json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))
           ids = [d['identifier'] for d in payload['devicetypes'] if d.get('name','').startswith('iPhone')]
           for identifier in reversed(ids):
               print(identifier)
           PY
-          )
+          )"
           UDID=''
-          for DEVICE_TYPE in "${DEVICE_TYPES[@]}"; do
-            if CANDIDATE="$(xcrun simctl create AppFusionSecureBlobProbe "$DEVICE_TYPE" "$RUNTIME" 2>/dev/null)"; then
+          while IFS= read -r DEVICE_TYPE; do
+            if [ -n "$DEVICE_TYPE" ] && CANDIDATE="$(xcrun simctl create AppFusionSecureBlobProbe "$DEVICE_TYPE" "$RUNTIME" 2>/dev/null)"; then
               UDID="$CANDIDATE"
               break
             fi
-          done
+          done <<< "$DEVICE_TYPES"
           test -n "$UDID"
           cleanup_simulator() {
             xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
