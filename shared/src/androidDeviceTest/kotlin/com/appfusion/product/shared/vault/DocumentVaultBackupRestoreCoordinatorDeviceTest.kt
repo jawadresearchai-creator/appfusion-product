@@ -118,8 +118,8 @@ class DocumentVaultBackupRestoreCoordinatorDeviceTest {
         val sourceDatabase = buildDocumentDatabase(documentDatabaseBuilder(context, databaseName))
         return try {
             val metadataStore = RoomDocumentMetadataStore(sourceDatabase.records())
-            val sourceSearch = DocumentSearchProjection("source-$id-${title.length}", allowAll)
-          val repository = DocumentVaultRepository(
+            val sourceSearch = DocumentSearchProjection("android-backup-source", allowAll)
+            val repository = DocumentVaultRepository(
                 metadataStore = metadataStore,
                 blobStore = AndroidFileSecureBlobStore(blobRoot),
                 secureBlobService = service,
