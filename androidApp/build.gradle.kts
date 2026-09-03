@@ -23,5 +23,9 @@ android {
 
 dependencies {
     implementation(project(":shared"))
+    // Public shared factories expose Room builder/database types, so the app
+    // must carry their ABI dependencies on its compile classpath as well.
+    implementation(libs.androidx.room3.runtime)
+    implementation(libs.androidx.sqlite.bundled)
     implementation(libs.kotlinx.coroutines.android)
 }
