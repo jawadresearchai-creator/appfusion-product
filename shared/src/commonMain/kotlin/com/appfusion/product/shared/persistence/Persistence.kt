@@ -101,6 +101,9 @@ val DocumentMigration2To3 = Migration(2, 3) { connection ->
     connection.execSQL("ALTER TABLE document_records ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
     connection.execSQL("ALTER TABLE document_records ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'ACTIVE'")
     connection.execSQL("ALTER TABLE document_records ADD COLUMN updatedAtEpochMillis INTEGER NOT NULL DEFAULT 0")
+    connection.execSQL("UPDATE document_records SET blobId = 'legacy:' || id")
+    connection.execSQL("UPDATE document_records SET revision = 1")
+    connection.execSQL("UPDATE document_records SET lifecycle = 'LEGACY_MIGRATION_REQUIRED'")
 }
 
 val FailingDocumentMigration1To2 = Migration(1, 2) { connection ->

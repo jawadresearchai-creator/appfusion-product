@@ -70,10 +70,10 @@ suspend fun assertSuccessfulMigration(path: String) {
         val migrated = assertNotNull(database.records().find("legacy-document"))
         assertEquals("Legacy title", migrated.title)
         assertEquals("", migrated.label)
-        assertEquals("", migrated.blobId)
+        assertEquals("legacy:legacy-document", migrated.blobId)
         assertEquals("application/octet-stream", migrated.contentType)
-        assertEquals(0L, migrated.revision)
-        assertEquals("ACTIVE", migrated.lifecycle)
+        assertEquals(1L, migrated.revision)
+        assertEquals("LEGACY_MIGRATION_REQUIRED", migrated.lifecycle)
         assertEquals(0L, migrated.updatedAtEpochMillis)
     } finally {
         database.close()

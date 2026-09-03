@@ -24,6 +24,7 @@ private val BACKUP_MAGIC = byteArrayOf(0x41, 0x46, 0x44, 0x42) // AFDB
 enum class DocumentLifecycle {
     ACTIVE,
     ARCHIVED,
+    LEGACY_MIGRATION_REQUIRED,
 }
 
 data class VaultDocumentMetadata(
@@ -37,7 +38,7 @@ data class VaultDocumentMetadata(
     val updatedAtEpochMillis: Long,
 ) {
     init {
-        require(id.isNotBlank()) { "Document ID must not be blank" }
+        EntityRef(EntityDomain.DOCUMENT, id)
         require(title.isNotBlank()) { "Document title must not be blank" }
         require(blobId.isNotBlank()) { "Blob ID must not be blank" }
         require(contentType.isNotBlank()) { "Content type must not be blank" }
@@ -188,6 +189,9 @@ class DocumentVaultRepository(
     suspend fun read(id: String, accessPolicy: DocumentAccessPolicy): VaultDocument? {
         val metadata = metadataStore.find(id) ?: return null
         if (!accessPolicy.canRead(metadata.ref)) return null
+        require(metadata.lifecycle != DocumentLifecycle.LEGACY_MIGRATION_REQUIRED) {
+            "Legacy document requires encrypted-payload migration"
+        }
         val stored = blobStore.read(metadata.blobId)
             ?: error("Encrypted payload is missing for document")
         require(stored.first.blobId == metadata.blobId) { "SecureBlob metadata mismatch" }
@@ -197,7 +201,13 @@ class DocumentVaultRepository(
         require(stored.second.integrityTag.contentEquals(envelope.authTag())) {
             "SecureBlob integrity tag mismatch"
         }
-        return VaultDocument(metadata, secureBlobService.unprotect(stored.second.ciphertext))
+        return VaultDocument(
+            metadata,
+            secureBlobService.unprotect(
+                stored.second.ciphertext,
+                secureBlobContext(metadata.blobId, metadata.contentType),
+            ),
+        )
     }
 
     suspend fun archive(id: String, occurredAtEpochMillis: Long): VaultDocumentMetadata {
@@ -239,7 +249,10 @@ class DocumentVaultRepository(
         require(plaintext.isNotEmpty()) { "Document payload must not be empty" }
         val revision = (previous?.revision ?: 0L) + 1L
         val blobId = "$id:revision:$revision"
-        val encoded = secureBlobService.protect(plaintext)
+        val encoded = secureBlobService.protect(
+            plaintext,
+            context = secureBlobContext(blobId, contentType),
+        )
         val envelope = SecureBlobCodec.decode(encoded)
         val secureMetadata = SecureBlobMetadata(blobId, envelope.version, contentType)
         val securePayload = EncryptedPayload(encoded, envelope.authTag())
@@ -372,6 +385,15 @@ private fun DocumentRecordEntity.toMetadata(): VaultDocumentMetadata = VaultDocu
 private fun com.appfusion.product.shared.security.SecureBlobEnvelope.authTag(): ByteArray {
     require(ciphertext.size >= 16) { "SecureBlob ciphertext does not contain an authentication tag" }
     return ciphertext.copyOfRange(ciphertext.size - 16, ciphertext.size)
+}
+
+private fun secureBlobContext(blobId: String, contentType: String): ByteArray {
+    val blobIdBytes = blobId.encodeToByteArray()
+    val contentTypeBytes = contentType.encodeToByteArray()
+    return BackupWriter().apply {
+        byteArray(blobIdBytes)
+        byteArray(contentTypeBytes)
+    }.toByteArray()
 }
 
 private class BackupWriter {

@@ -6,6 +6,7 @@ import dev.whyoleg.cryptography.algorithms.AES
 internal const val SECURE_BLOB_CURRENT_VERSION: Int = 2
 private const val SECURE_BLOB_MIN_VERSION: Int = 1
 private const val AES_GCM_ALGORITHM_ID: Int = 1
+private const val MAX_CONTEXT_BYTES: Int = 16 * 1024
 private val MAGIC = byteArrayOf(0x41, 0x46, 0x53, 0x42) // AFSB
 internal val KEY_WRAP_AAD = "appfusion-secureblob-key-wrap-v1".encodeToByteArray()
 
@@ -38,6 +39,22 @@ object SecureBlobCodec {
             bytes(keyIdBytes)
             i32(wrappedKey.size)
             bytes(wrappedKey)
+        }.toByteArray()
+    }
+
+    fun payloadAuthenticatedData(
+        version: Int,
+        keyId: String,
+        wrappedKey: ByteArray,
+        context: ByteArray,
+    ): ByteArray {
+        require(context.size <= MAX_CONTEXT_BYTES) { "SecureBlob context is too large" }
+        val envelopeData = authenticatedData(version, keyId, wrappedKey)
+        if (context.isEmpty()) return envelopeData
+        return Writer().apply {
+            bytes(envelopeData)
+            i32(context.size)
+            bytes(context)
         }.toByteArray()
     }
 
@@ -85,13 +102,19 @@ class SecureBlobService(private val keyWrapper: DeviceKeyWrapper) {
     suspend fun protect(
         plaintext: ByteArray,
         version: Int = SECURE_BLOB_CURRENT_VERSION,
+        context: ByteArray = byteArrayOf(),
     ): ByteArray {
         val algorithm = CryptographyProvider.Default.get(AES.GCM)
         val dataKey = algorithm.keyGenerator().generateKey()
         val rawKey = dataKey.encodeToByteArray(AES.Key.Format.RAW)
         try {
             val wrappedKey = keyWrapper.wrap(rawKey)
-            val aad = SecureBlobCodec.authenticatedData(version, keyWrapper.keyId, wrappedKey)
+            val aad = SecureBlobCodec.payloadAuthenticatedData(
+                version,
+                keyWrapper.keyId,
+                wrappedKey,
+                context,
+            )
             val ciphertext = dataKey.cipher().encrypt(plaintext = plaintext, associatedData = aad)
             return SecureBlobCodec.encode(
                 SecureBlobEnvelope(version, keyWrapper.keyId, wrappedKey, ciphertext),
@@ -101,7 +124,7 @@ class SecureBlobService(private val keyWrapper: DeviceKeyWrapper) {
         }
     }
 
-    suspend fun unprotect(encoded: ByteArray): ByteArray {
+    suspend fun unprotect(encoded: ByteArray, context: ByteArray = byteArrayOf()): ByteArray {
         val envelope = SecureBlobCodec.decode(encoded)
         require(envelope.keyId == keyWrapper.keyId) { "SecureBlob key id does not match active wrapper" }
         val rawKey = keyWrapper.unwrap(envelope.wrappedKey)
@@ -110,10 +133,11 @@ class SecureBlobService(private val keyWrapper: DeviceKeyWrapper) {
             val key = CryptographyProvider.Default.get(AES.GCM)
                 .keyDecoder()
                 .decodeFromByteArray(AES.Key.Format.RAW, rawKey)
-            val aad = SecureBlobCodec.authenticatedData(
+            val aad = SecureBlobCodec.payloadAuthenticatedData(
                 envelope.version,
                 envelope.keyId,
                 envelope.wrappedKey,
+                context,
             )
             return key.cipher().decrypt(ciphertext = envelope.ciphertext, associatedData = aad)
         } finally {
@@ -121,15 +145,19 @@ class SecureBlobService(private val keyWrapper: DeviceKeyWrapper) {
         }
     }
 
-    suspend fun migrate(encoded: ByteArray, targetVersion: Int = SECURE_BLOB_CURRENT_VERSION): ByteArray {
+    suspend fun migrate(
+        encoded: ByteArray,
+        targetVersion: Int = SECURE_BLOB_CURRENT_VERSION,
+        context: ByteArray = byteArrayOf(),
+    ): ByteArray {
         val current = SecureBlobCodec.decode(encoded)
         if (current.version == targetVersion) return encoded.copyOf()
         require(targetVersion > current.version && targetVersion <= SECURE_BLOB_CURRENT_VERSION) {
             "SecureBlob migration must move forward to a supported version"
         }
-        val plaintext = unprotect(encoded)
+        val plaintext = unprotect(encoded, context)
         return try {
-            protect(plaintext, targetVersion)
+            protect(plaintext, targetVersion, context)
         } finally {
             plaintext.fill(0)
         }

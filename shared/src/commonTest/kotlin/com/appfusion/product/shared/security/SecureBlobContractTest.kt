@@ -73,6 +73,20 @@ class SecureBlobContractTest {
     }
 
     @Test
+    fun callerContextPreventsCiphertextReassignment() = runTest {
+        val service = SecureBlobService(InMemoryKeyWrapper())
+        val originalContext = "document-1:revision-1".encodeToByteArray()
+        val changedContext = "document-2:revision-1".encodeToByteArray()
+        val encoded = service.protect("bound payload".encodeToByteArray(), context = originalContext)
+        assertContentEquals(
+            "bound payload".encodeToByteArray(),
+            service.unprotect(encoded, context = originalContext),
+        )
+        assertSuspendFails { service.unprotect(encoded, context = changedContext) }
+        assertSuspendFails { service.unprotect(encoded) }
+    }
+
+    @Test
     fun versionOneEnvelopeMigratesByDecryptingAndReencrypting() = runTest {
         val service = SecureBlobService(InMemoryKeyWrapper())
         val plaintext = "migration payload".encodeToByteArray()
