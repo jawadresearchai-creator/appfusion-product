@@ -261,7 +261,11 @@ jobs:
             "$SWIFT"
           cp -R "$FRAMEWORK" "$APP/Frameworks/AppFusionShared.framework"
           codesign --force --sign - --timestamp=none "$APP/Frameworks/AppFusionShared.framework"
-          codesign --force --sign - --timestamp=none --entitlements "$ENTITLEMENTS" "$APP"
+          # iOS 15+ validates the DER entitlement slot when an app carries
+          # application-identifier/keychain entitlements.  This probe is built
+          # outside Xcode, so ask codesign to generate that slot explicitly.
+          codesign --force --sign - --timestamp=none --generate-entitlement-der \
+            --entitlements "$ENTITLEMENTS" "$APP"
           codesign --display --entitlements :- "$APP"
 
           RUNTIME="$(python3 - <<'PY'
