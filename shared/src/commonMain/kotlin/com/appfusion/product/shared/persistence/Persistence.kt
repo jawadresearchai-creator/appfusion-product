@@ -37,6 +37,9 @@ interface DocumentRecordDao {
     @Query("SELECT * FROM document_records WHERE lifecycle = 'ACTIVE' ORDER BY id")
     suspend fun listActive(): List<DocumentRecordEntity>
 
+    @Query("SELECT * FROM document_records ORDER BY id")
+    suspend fun listAll(): List<DocumentRecordEntity>
+
     @Query("DELETE FROM document_records WHERE id = :id")
     suspend fun delete(id: String): Int
 }
