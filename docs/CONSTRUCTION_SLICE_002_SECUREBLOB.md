@@ -2,7 +2,7 @@
 
 Status: locked implementation boundary under the approved ProductBlueprint.
 
-Application: `docvault-lasttime-fusion`
+Product: approved personal vault and cadence workspace
 
 Blueprint SHA-256: `2120f5989ec35562377bd42e032018bd0004916d5ea4c56005f8e7048414b6fc`
 

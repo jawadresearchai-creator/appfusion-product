@@ -69,6 +69,20 @@ class CleanRoomGuardTests(unittest.TestCase):
         attestation["policy_bundle_hash"] = "0" * 64
         self.assertTrue(any("policy" in error.lower() for error in verify(blueprint, attestation)))
 
+    def test_product_repository_has_no_known_source_identity_leak(self):
+        forbidden_fragments = ("doc" + "vault", "last" + "time")
+        text_suffixes = {".json", ".kt", ".kts", ".md", ".plist", ".py", ".swift", ".toml", ".xml", ".yml"}
+        leaks = []
+        for path in ROOT.rglob("*"):
+            if not path.is_file() or ".git" in path.parts or "build" in path.parts:
+                continue
+            if path.suffix.casefold() not in text_suffixes:
+                continue
+            content = path.read_text(encoding="utf-8-sig", errors="ignore").casefold()
+            if any(fragment in content for fragment in forbidden_fragments):
+                leaks.append(path.relative_to(ROOT).as_posix())
+        self.assertEqual(leaks, [], "Known source identity leaked into Product repository")
+
 
 if __name__ == "__main__":
     unittest.main()
