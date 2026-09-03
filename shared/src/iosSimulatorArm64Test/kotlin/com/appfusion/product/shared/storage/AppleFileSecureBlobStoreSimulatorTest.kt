@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.appfusion.product.shared.storage
 
 import com.appfusion.product.shared.EncryptedPayload

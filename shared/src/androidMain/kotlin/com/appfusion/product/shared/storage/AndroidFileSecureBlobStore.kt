@@ -86,7 +86,7 @@ private class AndroidAtomicBlobFileBackend(
     private fun syncDirectory() {
         val descriptor = Os.open(
             root.path,
-            OsConstants.O_RDONLY or OsConstants.O_DIRECTORY,
+            OsConstants.O_RDONLY,
             0,
         )
         try {
