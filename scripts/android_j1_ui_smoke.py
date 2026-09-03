@@ -26,6 +26,8 @@ class AndroidJourney:
         self.evidence = evidence.resolve()
         self.evidence.mkdir(parents=True, exist_ok=True)
         self.xml_path = self.evidence / "window.xml"
+        if self.command("shell", "getprop", "ro.kernel.qemu").strip() != "1":
+            raise RuntimeError("J1 resets test app data and may run only on an Android emulator")
         size = self.command("shell", "wm", "size")
         matches = re.findall(r"(\d+)x(\d+)", size)
         if not matches:
@@ -99,8 +101,8 @@ class AndroidJourney:
     def run(self) -> None:
         if not self.apk.is_file():
             raise FileNotFoundError(self.apk)
-        self.command("install", "-r", "-t", str(self.apk))
-        self.command("shell", "pm", "clear", PACKAGE)
+        self.command("uninstall", PACKAGE, check=False)
+        self.command("install", "-t", str(self.apk))
         self.start()
         self.tap("document_title")
         self.command("shell", "input", "text", TITLE)
