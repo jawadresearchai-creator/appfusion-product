@@ -201,7 +201,7 @@ jobs:
 
           APP="$RUNNER_TEMP/SecureBlobProbe.app"
           SWIFT="$RUNNER_TEMP/SecureBlobProbe.swift"
-          mkdir -p "$APP"
+          mkdir -p "$APP/Frameworks"
           cat >"$SWIFT" <<'SWIFT'
           import Foundation
           import AppFusionShared
@@ -237,8 +237,12 @@ jobs:
             -target arm64-apple-ios16.0-simulator \
             -F "$FRAMEWORK_DIR" \
             -framework AppFusionShared \
+            -Xlinker -rpath \
+            -Xlinker @executable_path/Frameworks \
             -o "$APP/SecureBlobProbe" \
             "$SWIFT"
+          cp -R "$FRAMEWORK" "$APP/Frameworks/AppFusionShared.framework"
+          codesign --force --sign - --timestamp=none "$APP/Frameworks/AppFusionShared.framework"
           codesign --force --sign - --timestamp=none "$APP"
 
           RUNTIME="$(python3 - <<'PY'
