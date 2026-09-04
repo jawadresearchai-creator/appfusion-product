@@ -49,6 +49,7 @@ permissions:
 
 jobs:
   clean-room-guard:
+    if: ${{ vars.APPFUSION_FREE_APPROVED_SHA == github.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
