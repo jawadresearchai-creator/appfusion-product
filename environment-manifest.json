@@ -11,7 +11,17 @@
     "role": "OPTIONAL_ADAPTER",
     "required_for_build_or_release": false
   },
-  "github_usage_policy": "ESSENTIAL_ONLY",
+  "github_usage_policy": "ESSENTIAL_AND_VERIFIED_FREE_ONLY",
+  "execution_cost_policy": {
+    "spend_policy": "FREE_ONLY",
+    "maximum_new_service_charge": 0,
+    "billing_activation_allowed": false,
+    "paid_overage_authorized": false,
+    "github_hosted_execution": "DISABLED_UNTIL_VERIFIED_FREE",
+    "quota_free_cloud_candidate": "PUBLIC_PRODUCT_STANDARD_GITHUB_RUNNERS",
+    "quota_free_cloud_candidate_status": "REQUIRES_EXPLICIT_SOURCE_PUBLICATION_APPROVAL",
+    "monthly_free_tier_is_permanent_solution": false
+  },
   "product_implementation_status": "PRODUCT_CONSTRUCTION",
   "approved_product_blueprint": {
     "sha256": "2120f5989ec35562377bd42e032018bd0004916d5ea4c56005f8e7048414b6fc",

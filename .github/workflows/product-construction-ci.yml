@@ -37,6 +37,7 @@ permissions:
 
 jobs:
   preflight:
+    if: ${{ vars.APPFUSION_FREE_APPROVED_SHA == github.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -90,7 +91,7 @@ jobs:
 
   android-jvm-contracts:
     needs: preflight
-    if: needs.preflight.outputs.android_jvm == 'true'
+    if: vars.APPFUSION_FREE_APPROVED_SHA == github.sha && needs.preflight.outputs.android_jvm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -136,7 +137,7 @@ jobs:
 
   android-keystore-device:
     needs: preflight
-    if: needs.preflight.outputs.android_device == 'true'
+    if: vars.APPFUSION_FREE_APPROVED_SHA == github.sha && needs.preflight.outputs.android_device == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -285,7 +286,7 @@ jobs:
 
   ios-contracts:
     needs: preflight
-    if: needs.preflight.outputs.ios == 'true'
+    if: vars.APPFUSION_FREE_APPROVED_SHA == github.sha && needs.preflight.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 25
     steps:
